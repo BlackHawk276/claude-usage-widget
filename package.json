@@ -1,6 +1,6 @@
 {
   "name": "claude-usage-widget",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Monitor your Claude Code API rate limits from the terminal",
   "main": "lib/fetch.js",
   "bin": {
