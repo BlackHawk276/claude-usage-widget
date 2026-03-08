@@ -49,44 +49,114 @@ if (flagHelp) {
 // ── Widget mode ─────────────────────────────────────────────────
 
 if (flagWidget) {
-  const { exec } = require('child_process');
+  const { spawn, exec, execSync } = require('child_process');
+  const fs = require('fs');
   const chalk = require('chalk');
   const gold = chalk.hex('#c9a84c');
   const dim  = chalk.hex('#888888');
+  const warn = chalk.hex('#eab308');
+
+  const pyWidgetPath = path.join(__dirname, '..', 'claude_usage_widget.py');
 
   console.log('');
   console.log(gold.bold('  Starting Claude Usage Widget...'));
 
-  // Always use the browser widget — it works everywhere, no Python needed
-  const { startWidgetServer } = require(path.join(__dirname, '..', 'lib', 'server'));
+  // On macOS, try the native floating widget first
+  if (process.platform === 'darwin') {
+    let hasPython = false;
+    let hasTkinter = false;
 
-  startWidgetServer((port) => {
-    const url = `http://localhost:${port}`;
-    console.log(gold(`  Widget live at: ${url}`));
-    console.log('');
-    console.log(dim('  Auto-refreshes every 5 minutes.'));
-    console.log(dim('  Keep this terminal open. Press Ctrl+C to stop.'));
-    console.log('');
+    // Check python3
+    try {
+      execSync('python3 --version', { stdio: 'pipe' });
+      hasPython = true;
+    } catch (_) {}
 
-    // Open browser (cross-platform)
-    let cmd;
-    if (process.platform === 'darwin') cmd = `open "${url}"`;
-    else if (process.platform === 'win32') cmd = `start "" "${url}"`;
-    else cmd = `xdg-open "${url}"`;
+    // Check tkinter
+    if (hasPython) {
+      try {
+        execSync('python3 -c "import tkinter"', { stdio: 'pipe' });
+        hasTkinter = true;
+      } catch (_) {}
+    }
 
-    exec(cmd, (err) => {
-      if (err) {
-        console.log(chalk.hex('#eab308')('  Could not open browser automatically.'));
-        console.log(chalk.white(`  Open this URL manually: ${url}`));
-      }
+    if (hasPython && hasTkinter && fs.existsSync(pyWidgetPath)) {
+      console.log(gold('  Launching floating desktop widget...'));
+
+      // Launch with stderr piped so we can detect crashes
+      const child = spawn('python3', [pyWidgetPath], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+
+      let stderr = '';
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+      // Give it 3 seconds to start — if it crashes, fall back to browser
+      const timeout = setTimeout(() => {
+        // Still alive after 3s — it's working
+        child.stderr.destroy();
+        child.unref();
+        console.log(dim('  Widget is running on your screen.'));
+        console.log(dim('  Drag it anywhere. Click X to close.'));
+        console.log(dim(`  To stop: kill ${child.pid}`));
+        console.log('');
+        process.exit(0);
+      }, 3000);
+
+      child.on('exit', (code) => {
+        clearTimeout(timeout);
+        if (code !== 0) {
+          console.log(warn('  Desktop widget failed to start.'));
+          if (stderr.trim()) {
+            console.log(dim('  Error: ' + stderr.trim().split('\n').pop()));
+          }
+          console.log(dim('  Falling back to browser widget...\n'));
+          launchBrowserWidget();
+        }
+      });
+
+      return; // don't fall through
+    } else {
+      if (!hasPython) console.log(dim('  python3 not found.'));
+      else if (!hasTkinter) console.log(dim('  python3 tkinter not available.'));
+      console.log(dim('  Opening browser widget instead...\n'));
+    }
+  }
+
+  // Fallback: browser widget
+  launchBrowserWidget();
+
+  function launchBrowserWidget() {
+    const { startWidgetServer } = require(path.join(__dirname, '..', 'lib', 'server'));
+
+    startWidgetServer((port) => {
+      const url = `http://localhost:${port}`;
+      console.log(gold(`  Widget live at: ${url}`));
+      console.log('');
+      console.log(dim('  Auto-refreshes every 5 minutes.'));
+      console.log(dim('  Keep this terminal open. Press Ctrl+C to stop.'));
+      console.log('');
+
+      let cmd;
+      if (process.platform === 'darwin') cmd = `open "${url}"`;
+      else if (process.platform === 'win32') cmd = `start "" "${url}"`;
+      else cmd = `xdg-open "${url}"`;
+
+      exec(cmd, (err) => {
+        if (err) {
+          console.log(warn('  Could not open browser automatically.'));
+          console.log(chalk.white(`  Open this URL manually: ${url}`));
+        }
+      });
     });
-  });
 
-  process.on('SIGINT', () => {
-    console.log('');
-    console.log(dim('  Widget stopped.'));
-    process.exit(0);
-  });
+    process.on('SIGINT', () => {
+      console.log('');
+      console.log(dim('  Widget stopped.'));
+      process.exit(0);
+    });
+  }
 
   return; // don't fall through to run()
 }
