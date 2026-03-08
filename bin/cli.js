@@ -138,17 +138,57 @@ if (flagWidget) {
       console.log(dim('  Keep this terminal open. Press Ctrl+C to stop.'));
       console.log('');
 
-      let cmd;
-      if (process.platform === 'darwin') cmd = `open "${url}"`;
-      else if (process.platform === 'win32') cmd = `start "" "${url}"`;
-      else cmd = `xdg-open "${url}"`;
+      if (process.platform === 'darwin') {
+        // Try Chrome/Chromium --app mode first (minimal popup, no browser chrome)
+        const browsers = [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ];
 
-      exec(cmd, (err) => {
-        if (err) {
-          console.log(warn('  Could not open browser automatically.'));
-          console.log(chalk.white(`  Open this URL manually: ${url}`));
+        let launched = false;
+        for (const browser of browsers) {
+          if (fs.existsSync(browser)) {
+            console.log(gold('  Opening as floating widget window...'));
+            const child = spawn(browser, [
+              `--app=${url}`,
+              '--window-size=440,520',
+              '--window-position=1000,80',
+              '--disable-extensions',
+              '--no-first-run',
+            ], { detached: true, stdio: 'ignore' });
+            child.unref();
+            launched = true;
+            break;
+          }
         }
-      });
+
+        if (!launched) {
+          // Fallback: use AppleScript to open Safari as a small popup
+          console.log(gold('  Opening widget in Safari...'));
+          const script = `
+            tell application "Safari"
+              activate
+              set theDoc to make new document with properties {URL:"${url}"}
+              delay 1
+              tell window 1
+                set bounds to {960, 60, 1400, 560}
+              end tell
+            end tell
+          `;
+          exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
+            if (err) {
+              exec(`open "${url}"`, () => {});
+            }
+          });
+        }
+      } else if (process.platform === 'win32') {
+        exec(`start "" "${url}"`, () => {});
+      } else {
+        exec(`xdg-open "${url}"`, () => {});
+      }
     });
 
     process.on('SIGINT', () => {

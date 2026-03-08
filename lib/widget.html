@@ -3,28 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Usage Monitor</title>
+<title>Claude Usage</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  body {
+  html, body {
     background: #0e0e0e;
     color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     min-height: 100vh;
-    padding: 20px;
+    padding: 0;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .widget {
     background: #161616;
     border: 1px solid #252525;
-    border-radius: 16px;
-    padding: 28px 32px;
-    width: 420px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    border-radius: 0;
+    padding: 24px 28px;
+    width: 100%;
+    min-height: 100vh;
   }
 
   .header {
