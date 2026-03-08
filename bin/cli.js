@@ -2,7 +2,7 @@
 'use strict';
 
 const path = require('path');
-const { getUsageData } = require(path.join(__dirname, '..', 'lib', 'fetch'));
+const { getUsageData, setDebug } = require(path.join(__dirname, '..', 'lib', 'fetch'));
 const { render, renderError } = require(path.join(__dirname, '..', 'lib', 'display'));
 
 // ── Argument parsing ─────────────────────────────────────────────
@@ -11,6 +11,9 @@ const flagHelp   = args.includes('--help') || args.includes('-h');
 const flagWatch  = args.includes('--watch') || args.includes('-w');
 const flagJson   = args.includes('--json');
 const flagWidget = args.includes('--widget');
+const flagDebug  = args.includes('--debug');
+
+if (flagDebug) setDebug(true);
 
 // ── Help ─────────────────────────────────────────────────────────
 if (flagHelp) {
@@ -33,11 +36,12 @@ if (flagHelp) {
   console.log('    ' + chalk.white('--widget') + dim('      Open a live dashboard widget in your browser'));
   console.log('    ' + chalk.white('--watch, -w') + dim('   Refresh terminal display every 5 minutes'));
   console.log('    ' + chalk.white('--json') + dim('        Output JSON instead of formatted display'));
+  console.log('    ' + chalk.white('--debug') + dim('       Show diagnostic info for troubleshooting'));
   console.log('    ' + chalk.white('--help, -h') + dim('    Show this help message'));
   console.log('');
   console.log(body('  Prerequisites:'));
   console.log(dim('    - macOS with Claude Code installed and logged in'));
-  console.log(dim('    - OAuth credentials stored in macOS Keychain'));
+  console.log(dim('    - Run "claude" at least once and log in with your Anthropic account'));
   console.log('');
   process.exit(0);
 }
