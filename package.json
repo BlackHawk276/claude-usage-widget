@@ -1,0 +1,25 @@
+{
+  "name": "claude-usage-widget",
+  "version": "1.0.0",
+  "description": "Monitor your Claude Code API rate limits from the terminal",
+  "main": "lib/fetch.js",
+  "bin": {
+    "claude-usage": "./bin/cli.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.js"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "rate-limit",
+    "usage",
+    "cli",
+    "widget"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2"
+  }
+}
