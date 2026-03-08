@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Usage Monitor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0e0e0e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  .widget {
+    background: #161616;
+    border: 1px solid #252525;
+    border-radius: 16px;
+    padding: 28px 32px;
+    width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #c9a84c;
+    letter-spacing: 0.3px;
+  }
+
+  .header .refresh-btn {
+    background: none;
+    border: 1px solid #2a2a2a;
+    color: #888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  .header .refresh-btn:hover { color: #c9a84c; border-color: #c9a84c; }
+  .header .refresh-btn.loading { animation: spin 1s linear infinite; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .plan {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 20px;
+  }
+
+  .divider {
+    height: 1px;
+    background: #252525;
+    margin: 16px 0;
+  }
+
+  .limit {
+    margin-bottom: 18px;
+  }
+  .limit:last-child { margin-bottom: 0; }
+
+  .limit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+
+  .limit-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #ccc;
+  }
+
+  .limit-pct {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .bar-bg {
+    height: 8px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease, background-color 0.4s ease;
+  }
+
+  .limit-detail {
+    font-size: 11px;
+    color: #888;
+    margin-top: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #888;
+  }
+
+  .status-allowed { color: #c9a84c; }
+  .status-limited { color: #ef4444; }
+
+  .error-box {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #ef4444;
+  }
+
+  .no-data {
+    text-align: center;
+    color: #888;
+    padding: 40px 0;
+    font-size: 14px;
+  }
+
+  .green  { color: #22c55e; }
+  .yellow { color: #eab308; }
+  .orange { color: #f97316; }
+  .red    { color: #ef4444; }
+
+  .bar-green  { background: #22c55e; }
+  .bar-yellow { background: #eab308; }
+  .bar-orange { background: #f97316; }
+  .bar-red    { background: #ef4444; }
+</style>
+</head>
+<body>
+
+<div class="widget">
+  <div class="header">
+    <h1>&#9670; Claude Usage</h1>
+    <button class="refresh-btn" id="refreshBtn" onclick="refresh()">&#8635;</button>
+  </div>
+  <div class="plan" id="planInfo">Loading...</div>
+
+  <div class="divider"></div>
+
+  <div id="errorBox" class="error-box" style="display:none"></div>
+
+  <div id="limits">
+    <div class="no-data" id="loading">Loading usage data...</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="status-row">
+    <span id="statusText">--</span>
+    <span id="timestamp">--</span>
+  </div>
+</div>
+
+<script>
+const API_URL = `http://localhost:{{PORT}}/api/usage`;
+const REFRESH_MS = 5 * 60 * 1000;
+
+function pctColor(pct) {
+  if (pct < 50) return 'green';
+  if (pct < 75) return 'yellow';
+  if (pct < 90) return 'orange';
+  return 'red';
+}
+
+function formatReset(epoch) {
+  if (!epoch) return '?';
+  const diff = epoch - Date.now() / 1000;
+  if (diff <= 0) return 'now';
+  if (diff < 60) return Math.floor(diff) + 's';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm';
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  if (h >= 24) {
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return d + 'd ' + rh + 'h ' + m + 'm';
+  }
+  return h + 'h ' + m + 'm';
+}
+
+function renderLimit(name, data) {
+  if (!data || data.utilization === null) return '';
+  const pct = (data.utilization * 100).toFixed(1);
+  const color = pctColor(parseFloat(pct));
+  const statusIcon = data.status === 'allowed' ? '\u2713' : '\u2717';
+  return `
+    <div class="limit">
+      <div class="limit-header">
+        <span class="limit-name">${name}</span>
+        <span class="limit-pct ${color}">${pct}%</span>
+      </div>
+      <div class="bar-bg">
+        <div class="bar-fill bar-${color}" style="width: ${pct}%"></div>
+      </div>
+      <div class="limit-detail">
+        <span>${statusIcon} ${data.status || '--'}</span>
+        <span>resets in ${formatReset(data.reset)}</span>
+      </div>
+    </div>
+  `;
+}
+
+async function refresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('loading');
+
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById('errorBox').style.display = 'block';
+      document.getElementById('errorBox').textContent = data.error;
+      document.getElementById('limits').innerHTML = '<div class="no-data">Could not fetch usage data</div>';
+      btn.classList.remove('loading');
+      return;
+    }
+
+    document.getElementById('errorBox').style.display = 'none';
+
+    // Plan info
+    const a = data.account || {};
+    const parts = [a.displayName, a.subscriptionType, a.rateLimitTier].filter(Boolean);
+    document.getElementById('planInfo').textContent = parts.join(' \u2022 ');
+
+    // Limits
+    const l = data.limits || {};
+    let html = '';
+    html += renderLimit('5-Hour Limit', l.fiveHour);
+    html += renderLimit('Weekly Limit', l.weekly);
+    html += renderLimit('Sonnet Limit', l.sonnet);
+    document.getElementById('limits').innerHTML = html || '<div class="no-data">No rate limit data</div>';
+
+    // Status
+    const overall = l.overall?.status || '--';
+    const cls = overall === 'allowed' ? 'status-allowed' : 'status-limited';
+    document.getElementById('statusText').innerHTML = `Status: <span class="${cls}">${overall}</span>`;
+
+    // Timestamp
+    const now = new Date();
+    document.getElementById('timestamp').textContent = now.toLocaleTimeString();
+
+  } catch (err) {
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorBox').textContent = 'Connection lost. Is the CLI still running?';
+  }
+
+  btn.classList.remove('loading');
+}
+
+// Initial + auto-refresh
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+
+</body>
+</html>
